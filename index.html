@@ -67,7 +67,7 @@
     const database = firebase.database();
 
     // 2. CONFIGURAÇÃO DO EVENTO
-    const COORDENADAS = { lat: -22.64924, lng: -50.43754, raio: 2000 }; // 500 metros
+    const COORDENADAS = { lat: -22.64937, lng: -50.43752, raio: 2000 }; // 500 metros
     let gpsOk = false;
 
     // 3. LÓGICA DE GPS
@@ -120,13 +120,14 @@
     // 5. ÁREA ADMIN (LENDO EM TEMPO REAL)
     function acessoAdmin() {
         const pass = prompt("Senha Admin:");
-        if (pass === "Fatec@2026") {
-            document.getElementById('app-registro').style.display = 'none';
-            document.getElementById('app-admin').style.display = 'block';
-            ouvirPresencas();
-        }
+        if (btoa(pass) === CONFIG_ADMIN.senhaHash) {
+        document.getElementById('app-registro').style.display = 'none';
+        document.getElementById('app-admin').style.display = 'block';
+        ouvirPresencas();
+    } else {
+        alert("Senha incorreta.");
     }
-
+}
     function ouvirPresencas() {
         database.ref('presencas').on('value', snapshot => {
             const lista = [];
