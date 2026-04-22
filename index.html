@@ -53,7 +53,6 @@
 <script>
     // 1. CONFIGURAÇÃO FIREBASE
     const firebaseConfig = {
-        // COLE AQUI OS DADOS QUE VOCÊ COPPIOU DO CONSOLE DO FIREBASE
         apiKey: "AIzaSyBj_EROdXPVeM76p7zVLvCoCrj9VwARsgY",
         authDomain: "presenca-fatec.firebaseapp.com",
         databaseURL: "https://presenca-fatec-default-rtdb.firebaseio.com",
@@ -66,8 +65,13 @@
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
 
+    // --- AQUI ESTAVA O ERRO (Faltava declarar esta variável) ---
+    const CONFIG_ADMIN = {
+        senhaHash: "RmF0ZWNAMjAyNg==" // Corresponde a Fatec@2026
+    };
+
     // 2. CONFIGURAÇÃO DO EVENTO
-    const COORDENADAS = { lat: -22.64925425676289, lng: -50.43753606181999, raio: 1000 }; // 1000 metros
+    const COORDENADAS = { lat: -22.64925425676289, lng: -50.43753606181999, raio: 1000 }; 
     let gpsOk = false;
 
     // 3. LÓGICA DE GPS
@@ -103,7 +107,6 @@
     document.getElementById('nome').oninput = liberarBotao;
     document.getElementById('curso').onchange = liberarBotao;
 
-    // 4. GRAVAR NO BANCO
     function realizarCheckin() {
         const dados = {
             nome: document.getElementById('nome').value,
@@ -117,17 +120,18 @@
         });
     }
 
-    // 5. ÁREA ADMIN (LENDO EM TEMPO REAL)
     function acessoAdmin() {
         const pass = prompt("Senha Admin:");
+        // Agora btoa(pass) consegue comparar com CONFIG_ADMIN.senhaHash
         if (btoa(pass) === CONFIG_ADMIN.senhaHash) {
-        document.getElementById('app-registro').style.display = 'none';
-        document.getElementById('app-admin').style.display = 'block';
-        ouvirPresencas();
-    } else {
-        alert("Senha incorreta.");
+            document.getElementById('app-registro').style.display = 'none';
+            document.getElementById('app-admin').style.display = 'block';
+            ouvirPresencas();
+        } else {
+            alert("Senha incorreta.");
+        }
     }
-}
+
     function ouvirPresencas() {
         database.ref('presencas').on('value', snapshot => {
             const lista = [];
