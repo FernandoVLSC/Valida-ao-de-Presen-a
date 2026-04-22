@@ -77,7 +77,12 @@
     // 3. LÓGICA DE GPS
     function verificarGps() {
         if (!navigator.geolocation) return alert("GPS não disponível");
-        
+        // Opções para forçar precisão máxima e ignorar cache
+    const options = {
+        enableHighAccuracy: true, 
+        timeout: 10000, 
+        maximumAge: 0 // <--- FORÇA BUSCA DE LOCALIZAÇÃO NOVA
+    };
         navigator.geolocation.getCurrentPosition(pos => {
             const dist = calcularDistancia(pos.coords.latitude, pos.coords.longitude, COORDENADAS.lat, COORDENADAS.lng);
             if (dist <= COORDENADAS.raio) {
