@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check-in Universitário</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg: #0b101b; --accent: #3bffbb; --surface: #161c2d; --text: #f1f5f9; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .card { background: var(--surface); padding: 25px; border-radius: 15px; width: 100%; max-width: 400px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; }
+        h1 { font-family: 'Syne', sans-serif; font-size: 24px; margin: 0 0 10px; }
+        input, select, button { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
+        input, select { background: #1f293d; color: white; border: 1px solid #333; }
+        button { background: var(--accent); color: #000; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:disabled { opacity: 0.3; }
+        .status-gps { font-size: 12px; margin-bottom: 15px; color: var(--accent); }
+        .admin-area { display: none; width: 100%; max-width: 500px; }
+        .presenca-item { border-bottom: 1px solid #333; padding: 10px 0; display: flex; justify-content: space-between; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <div id="app-registro" class="card">
+        <h1>Check-in Evento</h1>
+        <div id="gps-status" class="status-gps">📍 Aguardando validação de local...</div>
+        
+        <input type="text" id="nome" placeholder="Nome Completo">
+        <select id="curso">
+            <option value="">Selecione o Curso</option>
+            <option value="GTI">GTI</option>
+            <option value="GCOM">GCOM</option>
+        </select>
+        
+        <button id="btn-checkin" disabled onclick="realizarCheckin()">Confirmar Presença</button>
+        <button style="background: none; color: #666; font-size: 11px; margin-top: 20px;" onclick="verificarGps()">Recarregar Localização</button>
+    </div>
+
+    <div id="app-admin" class="admin-area">
+        <div class="card">
+            <h1>Painel Admin</h1>
+            <div id="lista-presencas"> Carregando dados nuvem... </div>
+            <button onclick="exportarCSV()" style="margin-top: 15px;">Exportar Planilha</button>
+            <button onclick="irParaRegistro()" style="background: #333; color: white; margin-top: 5px;">Voltar</button>
+        </div>
+    </div>
+
+    <button onclick="acessoAdmin()" style="position: fixed; bottom: 10px; right: 10px; width: auto; font-size: 10px; opacity: 0.5;">Admin</button>
+
+<script>
+    // 1. CONFIGURAÇÃO FIREBASE
+    const firebaseConfig = {
+        // COLE AQUI OS DADOS QUE VOCÊ COPPIOU DO CONSOLE DO FIREBASE
+        apiKey: "AIzaSyBj_EROdXPVeM76p7zVLvCoCrj9VwARsgY",
+        authDomain: "presenca-fatec.firebaseapp.com",
+        databaseURL: "https://presenca-fatec-default-rtdb.firebaseio.com",
+        projectId: "presenca-fatec",
+        storageBucket: "presenca-fatec.firebasestorage.app",
+        messagingSenderId: "703947091483",
+        appId: "1:703947091483:web:c307f987e6436582dbd2be"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    // 2. CONFIGURAÇÃO DO EVENTO
+    const COORDENADAS = { lat: -22.653434, lng: -50.442004, raio: 500 }; // 500 metros
+    let gpsOk = false;
+
+    // 3. LÓGICA DE GPS
+    function verificarGps() {
+        if (!navigator.geolocation) return alert("GPS não disponível");
+        
+        navigator.geolocation.getCurrentPosition(pos => {
+            const dist = calcularDistancia(pos.coords.latitude, pos.coords.longitude, COORDENADAS.lat, COORDENADAS.lng);
+            if (dist <= COORDENADAS.raio) {
+                gpsOk = true;
+                document.getElementById('gps-status').innerText = "✅ Você está no local!";
+                liberarBotao();
+            } else {
+                document.getElementById('gps-status').innerText = `❌ Fora do local (${Math.round(dist)}m de distância)`;
+            }
+        }, () => alert("Ative o GPS para continuar"), {enableHighAccuracy: true});
+    }
+
+    function calcularDistancia(lat1, lon1, lat2, lon2) {
+        const R = 6371e3;
+        const dLat = (lat2-lat1) * Math.PI/180;
+        const dLon = (lon2-lon1) * Math.PI/180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    function liberarBotao() {
+        const nome = document.getElementById('nome').value;
+        const curso = document.getElementById('curso').value;
+        document.getElementById('btn-checkin').disabled = !(nome && curso && gpsOk);
+    }
+
+    document.getElementById('nome').oninput = liberarBotao;
+    document.getElementById('curso').onchange = liberarBotao;
+
+    // 4. GRAVAR NO BANCO
+    function realizarCheckin() {
+        const dados = {
+            nome: document.getElementById('nome').value,
+            curso: document.getElementById('curso').value,
+            horario: new Date().toLocaleTimeString('pt-BR')
+        };
+
+        database.ref('presencas').push(dados).then(() => {
+            alert("Presença confirmada na nuvem!");
+            location.reload();
+        });
+    }
+
+    // 5. ÁREA ADMIN (LENDO EM TEMPO REAL)
+    function acessoAdmin() {
+        const pass = prompt("Senha Admin:");
+        if (pass === "Fatec@2026") {
+            document.getElementById('app-registro').style.display = 'none';
+            document.getElementById('app-admin').style.display = 'block';
+            ouvirPresencas();
+        }
+    }
+
+    function ouvirPresencas() {
+        database.ref('presencas').on('value', snapshot => {
+            const lista = [];
+            snapshot.forEach(item => { lista.push(item.val()); });
+            
+            document.getElementById('lista-presencas').innerHTML = lista.reverse().map(p => `
+                <div class="presenca-item">
+                    <span><strong>${p.nome}</strong> (${p.curso})</span>
+                    <span style="color:var(--accent)">${p.horario}</span>
+                </div>
+            `).join('') || "Nenhuma presença ainda.";
+            window.dadosParaExportar = lista;
+        });
+    }
+
+    function exportarCSV() {
+        if (!window.dadosParaExportar) return;
+        let csv = "Nome;Curso;Horario\n";
+        window.dadosParaExportar.forEach(p => { csv += `${p.nome};${p.curso};${p.horario}\n`; });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'lista_presenca.csv';
+        a.click();
+    }
+
+    function irParaRegistro() {
+        document.getElementById('app-registro').style.display = 'block';
+        document.getElementById('app-admin').style.display = 'none';
+    }
+
+    window.onload = verificarGps;
+</script>
+</body>
+</html>
