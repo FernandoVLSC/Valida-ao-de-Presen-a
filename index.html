@@ -19,22 +19,19 @@
         button:disabled { opacity: 0.3; }
         .status-gps { font-size: 12px; margin-bottom: 15px; color: var(--accent); }
         .admin-area { display: none; width: 100%; max-width: 500px; }
-        .presenca-item { border-bottom: 1px solid #333; padding: 10px 0; display: flex; justify-content: space-between; font-size: 14px; }
+        .presenca-item { border-bottom: 1px solid #333; padding: 10px 0; display: flex; justify-content: space-between; align-items: center; font-size: 14px; gap: 8px; }
 
-        /* ── BOTÃO LIMPAR ── */
-        .btn-danger {
-            background: transparent;
-            border: 1px solid #ff5c7c;
-            color: #ff5c7c;
-            margin-top: 5px;
-        }
+        .btn-danger { background: transparent; border: 1px solid #ff5c7c; color: #ff5c7c; margin-top: 5px; }
         .btn-danger:hover { background: rgba(255,92,124,0.12); }
+        .btn-secundario { background: #333; color: white; margin-top: 5px; }
 
-        .btn-secundario {
-            background: #333;
-            color: white;
-            margin-top: 5px;
-        }
+        /* ── BADGES DE STATUS ── */
+        .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+        .badge-valido  { background: rgba(59,255,187,0.15); color: #3bffbb; border: 1px solid rgba(59,255,187,0.3); }
+        .badge-suspeito { background: rgba(255,200,0,0.15); color: #ffc800; border: 1px solid rgba(255,200,0,0.3); }
+
+        /* ── AVISO DE FRAUDE ── */
+        #aviso-fraude { display: none; background: rgba(255,200,0,0.1); border: 1px solid rgba(255,200,0,0.4); border-radius: 10px; padding: 12px 16px; font-size: 13px; color: #ffc800; margin-top: 10px; line-height: 1.5; }
     </style>
 </head>
 <body>
@@ -57,9 +54,18 @@
     <div id="app-admin" class="admin-area">
         <div class="card">
             <h1>Painel Admin</h1>
+
+            <!-- Filtro de status -->
+            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+                <button onclick="filtrarLista('todos')"    class="btn-filtro btn-secundario" id="f-todos"    style="width:auto;padding:6px 14px;font-size:12px;">Todos</button>
+                <button onclick="filtrarLista('válido')"   class="btn-filtro btn-secundario" id="f-valido"   style="width:auto;padding:6px 14px;font-size:12px;">✅ Válidos</button>
+                <button onclick="filtrarLista('suspeito')" class="btn-filtro btn-secundario" id="f-suspeito" style="width:auto;padding:6px 14px;font-size:12px;">⚠️ Suspeitos</button>
+            </div>
+
             <div id="lista-presencas">Carregando dados nuvem...</div>
+            <div id="contagem" style="font-size:12px;color:#666;margin-top:8px;"></div>
+
             <button onclick="exportarCSV()" style="margin-top: 15px;">Exportar Planilha</button>
-            <!-- ✅ CORREÇÃO 2: Botão limpar lista adicionado -->
             <button class="btn-danger" onclick="limparLista()">🗑 Limpar Lista</button>
             <button class="btn-secundario" onclick="irParaRegistro()">Voltar</button>
         </div>
@@ -68,7 +74,9 @@
     <button onclick="acessoAdmin()" style="position: fixed; bottom: 10px; right: 10px; width: auto; font-size: 10px; opacity: 0.5;">Admin</button>
 
 <script>
+    // ─────────────────────────────────────────
     // 1. CONFIGURAÇÃO FIREBASE
+    // ─────────────────────────────────────────
     const firebaseConfig = {
         apiKey: "AIzaSyBj_EROdXPVeM76p7zVLvCoCrj9VwARsgY",
         authDomain: "presenca-fatec.firebaseapp.com",
@@ -86,21 +94,63 @@
         senhaHash: "RmF0ZWNAMjAyNg==" // Fatec@2026
     };
 
+    // ─────────────────────────────────────────
     // 2. CONFIGURAÇÃO DO EVENTO
+    // ─────────────────────────────────────────
     const COORDENADAS = { lat: -22.64925425676289, lng: -50.43753606181999, raio: 500 };
     let gpsOk = false;
 
-    // 3. LÓGICA DE GPS
-    // ✅ CORREÇÃO 1: options agora é usado corretamente no getCurrentPosition
     const GPS_OPTIONS = {
         enableHighAccuracy: true,
         timeout: 10000,
-        maximumAge: 0  // Força nova leitura, nunca usa cache
+        maximumAge: 0
     };
 
+    // ─────────────────────────────────────────
+    // 3. DEVICE FINGERPRINT
+    // Gera um ID único para o dispositivo/navegador
+    // sem precisar de bibliotecas externas.
+    // ─────────────────────────────────────────
+    function gerarFingerprint() {
+        const componentes = [];
+
+        // Canvas fingerprint (diferente por GPU/driver)
+        try {
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            ctx.textBaseline = "top";
+            ctx.font = "14px Arial";
+            ctx.fillStyle = "#3bffbb";
+            ctx.fillText("fatec-fp-2025", 2, 2);
+            componentes.push(canvas.toDataURL().slice(-30));
+        } catch(e) { componentes.push("no-canvas"); }
+
+        // Dados do navegador e dispositivo
+        componentes.push(navigator.userAgent);
+        componentes.push(`${screen.width}x${screen.height}x${screen.colorDepth}`);
+        componentes.push(Intl.DateTimeFormat().resolvedOptions().timeZone);
+        componentes.push(navigator.language);
+        componentes.push(String(navigator.hardwareConcurrency || ""));
+        componentes.push(String(navigator.maxTouchPoints || ""));
+
+        // Gera hash numérico da string combinada
+        const str = componentes.join("||");
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return Math.abs(hash).toString(16).padStart(8, "0");
+    }
+
+    // Gera o fingerprint uma vez ao carregar a página
+    const DEVICE_ID = gerarFingerprint();
+
+    // ─────────────────────────────────────────
+    // 4. LÓGICA DE GPS
+    // ─────────────────────────────────────────
     function verificarGps() {
         if (!navigator.geolocation) return alert("GPS não disponível");
-
         document.getElementById('gps-status').innerText = "📡 Verificando localização...";
 
         navigator.geolocation.getCurrentPosition(
@@ -112,20 +162,19 @@
                 if (dist <= COORDENADAS.raio) {
                     gpsOk = true;
                     document.getElementById('gps-status').innerText = "✅ Você está no local!";
-                    liberarBotao();
                 } else {
                     gpsOk = false;
                     document.getElementById('gps-status').innerText =
                         `❌ Fora do local (${Math.round(dist)}m de distância)`;
-                    liberarBotao();
                 }
+                liberarBotao();
             },
             () => {
                 gpsOk = false;
                 document.getElementById('gps-status').innerText = "⚠️ Ative o GPS para continuar";
                 liberarBotao();
             },
-            GPS_OPTIONS  // ← variável única, usada aqui
+            GPS_OPTIONS
         );
     }
 
@@ -140,7 +189,7 @@
     }
 
     function liberarBotao() {
-        const nome  = document.getElementById('nome').value;
+        const nome  = document.getElementById('nome').value.trim();
         const curso = document.getElementById('curso').value;
         document.getElementById('btn-checkin').disabled = !(nome && curso && gpsOk);
     }
@@ -148,20 +197,61 @@
     document.getElementById('nome').oninput   = liberarBotao;
     document.getElementById('curso').onchange = liberarBotao;
 
-    // 4. CHECK-IN
+    // ─────────────────────────────────────────
+    // 5. CHECK-IN COM ANTI-FRAUDE
+    // ─────────────────────────────────────────
     function realizarCheckin() {
-        const dados = {
-            nome:    document.getElementById('nome').value,
-            curso:   document.getElementById('curso').value,
-            horario: new Date().toLocaleTimeString('pt-BR')
-        };
-        database.ref('presencas').push(dados).then(() => {
-            alert("Presença confirmada na nuvem!");
-            location.reload();
+        const btn  = document.getElementById('btn-checkin');
+        const nome = document.getElementById('nome').value.trim();
+        const curso = document.getElementById('curso').value;
+
+        btn.disabled = true;
+        btn.innerText = "Verificando...";
+
+        // Consulta o Firebase para detectar duplicidade de dispositivo
+        database.ref('presencas').once('value', snapshot => {
+            let deviceJaUsado = false;
+            let nomeAnterior  = "";
+
+            snapshot.forEach(item => {
+                const p = item.val();
+                // Mesmo deviceId, mas nome diferente = possível fraude
+                if (p.deviceId === DEVICE_ID && p.nome !== nome) {
+                    deviceJaUsado = true;
+                    nomeAnterior  = p.nome;
+                }
+            });
+
+            const status = deviceJaUsado ? "suspeito" : "válido";
+
+            const dados = {
+                nome,
+                curso,
+                horario:  new Date().toLocaleTimeString('pt-BR'),
+                deviceId: DEVICE_ID,
+                status
+            };
+
+            database.ref('presencas').push(dados).then(() => {
+                if (status === "suspeito") {
+                    alert(`⚠️ Presença registrada, mas marcada como SUSPEITA.\nEste dispositivo já foi usado por: ${nomeAnterior}`);
+                } else {
+                    alert("✅ Presença confirmada!");
+                }
+                location.reload();
+            }).catch(err => {
+                alert("Erro ao salvar: " + err.message);
+                btn.disabled = false;
+                btn.innerText = "Confirmar Presença";
+            });
         });
     }
 
-    // 5. ADMIN
+    // ─────────────────────────────────────────
+    // 6. PAINEL ADMIN
+    // ─────────────────────────────────────────
+    let filtroAtivo = 'todos';
+
     function acessoAdmin() {
         const pass = prompt("Senha Admin:");
         if (btoa(pass) === CONFIG_ADMIN.senhaHash) {
@@ -177,17 +267,50 @@
         database.ref('presencas').on('value', snapshot => {
             const lista = [];
             snapshot.forEach(item => { lista.push({ key: item.key, ...item.val() }); });
+            window.dadosParaExportar = lista;
+            renderizarLista(lista);
+        });
+    }
 
-            document.getElementById('lista-presencas').innerHTML =
-                lista.slice().reverse().map(p => `
+    function renderizarLista(lista) {
+        const filtrada = filtroAtivo === 'todos'
+            ? lista
+            : lista.filter(p => p.status === filtroAtivo);
+
+        const total    = lista.length;
+        const suspeitos = lista.filter(p => p.status === 'suspeito').length;
+
+        document.getElementById('contagem').innerHTML =
+            `${total} presença(s) — ` +
+            `<span style="color:#3bffbb">${total - suspeitos} válidas</span> · ` +
+            `<span style="color:#ffc800">${suspeitos} suspeitas</span>`;
+
+        document.getElementById('lista-presencas').innerHTML =
+            filtrada.slice().reverse().map(p => {
+                const badge = p.status === 'suspeito'
+                    ? `<span class="badge badge-suspeito">⚠️ suspeito</span>`
+                    : `<span class="badge badge-valido">✅ válido</span>`;
+                return `
                     <div class="presenca-item">
                         <span><strong>${p.nome}</strong> (${p.curso})</span>
-                        <span style="color:var(--accent)">${p.horario}</span>
-                    </div>
-                `).join('') || "<p style='color:#666;text-align:center'>Nenhuma presença ainda.</p>";
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            ${badge}
+                            <span style="color:var(--accent);white-space:nowrap">${p.horario}</span>
+                        </div>
+                    </div>`;
+            }).join('') || "<p style='color:#666;text-align:center'>Nenhuma presença encontrada.</p>";
+    }
 
-            window.dadosParaExportar = lista;
+    function filtrarLista(status) {
+        filtroAtivo = status;
+        // Destaca botão ativo
+        ['todos','valido','suspeito'].forEach(id => {
+            document.getElementById('f-' + id).style.borderColor = '';
         });
+        const mapa = { todos: 'f-todos', 'válido': 'f-valido', suspeito: 'f-suspeito' };
+        if (mapa[status]) document.getElementById(mapa[status]).style.borderColor = '#3bffbb';
+
+        if (window.dadosParaExportar) renderizarLista(window.dadosParaExportar);
     }
 
     function exportarCSV() {
@@ -195,9 +318,9 @@
             alert("Nenhum dado para exportar.");
             return;
         }
-        let csv = "Nome;Curso;Horario\n";
+        let csv = "Nome;Curso;Horario;Status;DeviceID\n";
         window.dadosParaExportar.forEach(p => {
-            csv += `${p.nome};${p.curso};${p.horario}\n`;
+            csv += `${p.nome};${p.curso};${p.horario};${p.status || 'válido'};${p.deviceId || ''}\n`;
         });
         const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         const url  = URL.createObjectURL(blob);
@@ -208,7 +331,6 @@
         URL.revokeObjectURL(url);
     }
 
-    // ✅ CORREÇÃO 2: Função limparLista implementada
     function limparLista() {
         if (!confirm("⚠️ Tem certeza? Isso apagará TODAS as presenças do Firebase. Esta ação não pode ser desfeita.")) return;
         database.ref('presencas').remove()
