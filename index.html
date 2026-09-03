@@ -1,349 +1,982 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Check-in Universitário</title>
-    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
-    
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
-    <style>
-        :root { --bg: #0b101b; --accent: #3bffbb; --surface: #161c2d; --text: #f1f5f9; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .card { background: var(--surface); padding: 25px; border-radius: 15px; width: 100%; max-width: 400px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; }
-        h1 { font-family: 'Syne', sans-serif; font-size: 24px; margin: 0 0 10px; }
-        input, select, button { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
-        input, select { background: #1f293d; color: white; border: 1px solid #333; }
-        button { background: var(--accent); color: #000; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        button:disabled { opacity: 0.3; }
-        .status-gps { font-size: 12px; margin-bottom: 15px; color: var(--accent); }
-        .admin-area { display: none; width: 100%; max-width: 500px; }
-        .presenca-item { border-bottom: 1px solid #333; padding: 10px 0; display: flex; justify-content: space-between; align-items: center; font-size: 14px; gap: 8px; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Lista de Presença</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Firebase (Realtime Database) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<style>
+  :root {
+    --bg: #0b0f1a;
+    --surface: #131929;
+    --surface2: #1c2640;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --accent: #3bffbb;
+    --accent-dim: rgba(59,255,187,0.12);
+    --accent-dark: #0fa86e;
+    --text: #f0f4ff;
+    --text2: #8892aa;
+    --text3: #4a5568;
+    --danger: #ff5c7c;
+    --danger-dim: rgba(255,92,124,0.12);
+    --warning: #ffa94d;
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
-        .btn-danger { background: transparent; border: 1px solid #ff5c7c; color: #ff5c7c; margin-top: 5px; }
-        .btn-danger:hover { background: rgba(255,92,124,0.12); }
-        .btn-secundario { background: #333; color: white; margin-top: 5px; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 0 60px;
+  }
 
-        /* ── BADGES DE STATUS ── */
-        .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
-        .badge-valido  { background: rgba(59,255,187,0.15); color: #3bffbb; border: 1px solid rgba(59,255,187,0.3); }
-        .badge-suspeito { background: rgba(255,200,0,0.15); color: #ffc800; border: 1px solid rgba(255,200,0,0.3); }
+  /* HEADER */
+  .header {
+    width: 100%;
+    padding: 28px 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    top: -80px; left: -80px;
+    width: 280px; height: 280px;
+    background: radial-gradient(circle, rgba(59,255,187,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .header-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .header-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1.2;
+  }
+  .header-event {
+    font-size: 13px;
+    color: var(--text2);
+    margin-top: 2px;
+  }
+  .admin-btn {
+    position: absolute;
+    top: 28px; right: 20px;
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--text2);
+    font-size: 12px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: all 0.2s;
+  }
+  .admin-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-        /* ── AVISO DE FRAUDE ── */
-        #aviso-fraude { display: none; background: rgba(255,200,0,0.1); border: 1px solid rgba(255,200,0,0.4); border-radius: 10px; padding: 12px 16px; font-size: 13px; color: #ffc800; margin-top: 10px; line-height: 1.5; }
-    </style>
+  /* CONTAINER */
+  .container { width: 100%; max-width: 480px; padding: 28px 20px 0; }
+
+  /* STEPS */
+  .step { display: none; }
+  .step.active { display: block; }
+
+  /* CARDS */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .card-desc {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.6;
+    margin-bottom: 20px;
+  }
+
+  /* ICON BADGES */
+  .icon-badge {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .icon-badge.green { background: var(--accent-dim); }
+  .icon-badge.red { background: var(--danger-dim); }
+  .icon-badge.amber { background: rgba(255,169,77,0.12); }
+
+  /* LOCATION STATUS */
+  .loc-status {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    margin-bottom: 20px;
+    font-size: 13px;
+  }
+  .loc-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    background: var(--text3);
+    transition: background 0.4s;
+  }
+  .loc-dot.checking { background: var(--warning); animation: pulse 1s infinite; }
+  .loc-dot.ok { background: var(--accent); }
+  .loc-dot.fail { background: var(--danger); }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+  .loc-text { flex: 1; }
+  .loc-text strong { display: block; color: var(--text); font-size: 13px; font-weight: 500; }
+  .loc-text span { color: var(--text2); font-size: 12px; }
+
+  /* FORM */
+  .field { margin-bottom: 16px; }
+  .field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text2);
+    margin-bottom: 8px;
+  }
+  .field input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-sm);
+    padding: 13px 16px;
+    font-size: 15px;
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .field input::placeholder { color: var(--text3); }
+  .field input:focus { border-color: var(--accent); }
+
+  /* BUTTON */
+  .btn {
+    width: 100%;
+    padding: 15px;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.02em;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #0b0f1a;
+  }
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+  .btn-primary:active:not(:disabled) { transform: translateY(0); }
+  .btn-primary:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--text2);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+  }
+  .btn-secondary:hover { border-color: var(--border2); color: var(--text); background: var(--surface2); }
+
+  .btn-loc {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    width: auto;
+    padding: 10px 20px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 16px;
+  }
+  .btn-loc:hover { background: var(--accent-dim); }
+
+  /* SUCCESS */
+  .success-wrap {
+    text-align: center;
+    padding: 40px 20px;
+  }
+  .success-icon {
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: var(--accent-dim);
+    border: 2px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px;
+    margin: 0 auto 24px;
+    animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  @keyframes popIn { from { transform:scale(0); opacity:0; } to { transform:scale(1); opacity:1; } }
+  .success-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+  .success-name {
+    color: var(--accent);
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .success-time {
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: 16px;
+  }
+  .success-badge {
+    display: inline-block;
+    background: var(--accent-dim);
+    border: 1px solid rgba(59,255,187,0.25);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 14px;
+    border-radius: 999px;
+    margin-top: 12px;
+  }
+
+  /* ADMIN */
+  .admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .admin-header h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+  }
+  .count-badge {
+    background: var(--accent-dim);
+    border: 1px solid rgba(59,255,187,0.2);
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 999px;
+  }
+
+  .attendee-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+  .attendee-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .attendee-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--accent-dim);
+    border: 1px solid rgba(59,255,187,0.2);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .attendee-info { flex: 1; min-width: 0; }
+  .attendee-name {
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .attendee-meta {
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: 2px;
+  }
+  .attendee-time {
+    font-size: 12px;
+    color: var(--text2);
+    flex-shrink: 0;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text3);
+    font-size: 14px;
+  }
+
+  /* EXPORT */
+  .export-row { display: flex; gap: 10px; }
+  .export-row .btn { flex: 1; }
+
+  /* CONFIG */
+  .config-notice {
+    background: rgba(255,169,77,0.08);
+    border: 1px solid rgba(255,169,77,0.2);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    font-size: 13px;
+    color: var(--warning);
+    line-height: 1.6;
+    margin-bottom: 20px;
+  }
+  .config-notice strong { display: block; font-weight: 600; margin-bottom: 4px; }
+
+  /* DELETE button */
+  .delete-btn {
+    background: transparent;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+    transition: color 0.2s;
+    flex-shrink: 0;
+  }
+  .delete-btn:hover { color: var(--danger); }
+
+  /* DIVIDER */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 20px 0;
+  }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    padding: 28px 24px;
+    width: 100%;
+    max-width: 360px;
+  }
+  .modal h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    margin-bottom: 6px;
+  }
+  .modal p { font-size: 13px; color: var(--text2); margin-bottom: 20px; }
+  .modal-btns { display: flex; gap: 10px; margin-top: 16px; }
+  .modal-btns .btn { flex: 1; }
+
+  /* ERROR */
+  .error-msg {
+    font-size: 12px;
+    color: var(--danger);
+    margin-top: 8px;
+    display: none;
+  }
+
+  /* SETTINGS panel */
+  .settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+</style>
 </head>
 <body>
 
-    <div id="app-registro" class="card">
-        <h1>Check-in Evento</h1>
-        <div id="gps-status" class="status-gps">📍 Aguardando validação de local...</div>
-        
-        <input type="text" id="nome" placeholder="Nome Completo">
-        <select id="curso">
-            <option value="">Selecione o Curso</option>
-            <option value="GTI">GTI</option>
-            <option value="GCOM">GCOM</option>
-        </select>
-        
-        <button id="btn-checkin" disabled onclick="realizarCheckin()">Confirmar Presença</button>
-        <button style="background: none; color: #666; font-size: 11px; margin-top: 20px;" onclick="verificarGps()">Recarregar Localização</button>
-    </div>
+<!-- ============================================================
+     CONFIGURAÇÃO — edite as variáveis abaixo antes de publicar
+     ============================================================ -->
+<script>
+const CONFIG = {
+  /* Nome da faculdade exibido no topo */
+  nomeFaculdade: "FATEC",
 
-    <div id="app-admin" class="admin-area">
-        <div class="card">
-            <h1>Painel Admin</h1>
+  /* Nome do evento (pode ser alterado pelo admin depois) */
+  nomeEvento: "Evento Letivo",
 
-            <!-- Filtro de status -->
-            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
-                <button onclick="filtrarLista('todos')"    class="btn-filtro btn-secundario" id="f-todos"    style="width:auto;padding:6px 14px;font-size:12px;">Todos</button>
-                <button onclick="filtrarLista('válido')"   class="btn-filtro btn-secundario" id="f-valido"   style="width:auto;padding:6px 14px;font-size:12px;">✅ Válidos</button>
-                <button onclick="filtrarLista('suspeito')" class="btn-filtro btn-secundario" id="f-suspeito" style="width:auto;padding:6px 14px;font-size:12px;">⚠️ Suspeitos</button>
-            </div>
+  /* Senha do painel admin */
+  senhaAdmin: "Fatec@2026",
 
-            <div id="lista-presencas">Carregando dados nuvem...</div>
-            <div id="contagem" style="font-size:12px;color:#666;margin-top:8px;"></div>
+  /* Coordenadas da faculdade (latitude, longitude) */
+  /* Para obter: acesse maps.google.com, clique com botão direito no local e copie as coordenadas */
+  lat: -22.653420051587798,
+  lng: -50.44201943333714,
 
-            <button onclick="exportarCSV()" style="margin-top: 15px;">Exportar Planilha</button>
-            <button class="btn-danger" onclick="limparLista()">🗑 Limpar Lista</button>
-            <button class="btn-secundario" onclick="irParaRegistro()">Voltar</button>
+  /* Raio tolerado em metros (ex: 200 = 200 metros ao redor da faculdade) */
+  raioMetros: 5000,
+
+  /* Exigir verificação de localização para registrar? */
+  /* true = sim (mais seguro) | false = não (sem restrição) */
+  exigirLocalizacao: true,
+
+  /* Permitir registros duplicados do mesmo RA? */
+  permitirDuplicata: true,
+
+  /* Bloquear que o mesmo APARELHO (celular/navegador) confirme presença
+     com nomes/RAs diferentes no mesmo evento? */
+  /* true = sim (recomendado) | false = não */
+  bloquearDispositivoDuplicado: true,
+
+  /* ================================================================
+     FIREBASE — cole aqui a config do seu projeto
+     (Console Firebase > Configurações do projeto > Seus apps > SDK setup)
+     ================================================================ */
+  firebase: {
+    apiKey: "AIzaSyBj_EROdXPVeM76p7zVLvCoCrj9VwARsgY",
+    authDomain: "presenca-fatec.firebaseapp.com",
+    databaseURL: "https://presenca-fatec-default-rtdb.firebaseio.com",
+    projectId: "presenca-fatec",
+    storageBucket: "presenca-fatec.firebasestorage.app",
+    messagingSenderId: "703947091483",
+    appId: "1:703947091483:web:c307f987e6436582dbd2be",
+  }
+};
+
+firebase.initializeApp(CONFIG.firebase);
+const db = firebase.database();
+</script>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-label" id="headerLabel">Lista de Presença</div>
+  <div class="header-title" id="headerTitle">Carregando...</div>
+  <div class="header-event" id="headerEvent"></div>
+  <button class="admin-btn" onclick="abrirModalAdmin()">⚙ Admin</button>
+</div>
+
+<div class="container">
+
+  <!-- ===================== STEP: REGISTRO ===================== -->
+  <div class="step active" id="stepRegistro">
+
+    <!-- Status de localização -->
+    <div id="locCard" class="card">
+      <div class="card-title">
+        <div class="icon-badge green">📍</div>
+        Verificação de local
+      </div>
+      <div class="card-desc" id="locDesc">
+        Precisamos confirmar que você está presente no local do evento.
+      </div>
+
+      <div class="loc-status" id="locStatus">
+        <div class="loc-dot" id="locDot"></div>
+        <div class="loc-text">
+          <strong id="locTitle">Aguardando verificação</strong>
+          <span id="locSub">Clique no botão abaixo para verificar</span>
         </div>
+      </div>
+
+      <button class="btn-loc" id="btnLoc" onclick="verificarLocalizacao()">
+        📡 Verificar minha localização
+      </button>
     </div>
 
-    <button onclick="acessoAdmin()" style="position: fixed; bottom: 10px; right: 10px; width: auto; font-size: 10px; opacity: 0.5;">Admin</button>
+    <!-- Formulário -->
+    <div class="card">
+      <div class="card-title">
+        <div class="icon-badge green">✏️</div>
+        Seus dados
+      </div>
+
+      <div class="field">
+        <label>Nome completo</label>
+        <input type="text" id="inputNome" placeholder="Ex: João da Silva" autocomplete="name" />
+      </div>
+
+      <div class="field">
+        <label>Curso</label>
+        <input type="text" id="inputRA" placeholder="Ex: GTI/GCOM" inputmode="text" />
+      </div>
+
+      <div class="error-msg" id="erroForm"></div>
+
+      <button class="btn btn-primary" id="btnRegistrar" onclick="registrarPresenca()" disabled>
+        Confirmar presença
+      </button>
+    </div>
+
+  </div>
+
+  <!-- ===================== STEP: SUCESSO ===================== -->
+  <div class="step" id="stepSucesso">
+    <div class="card">
+      <div class="success-wrap">
+        <div class="success-icon">✓</div>
+        <div class="success-title">Presença confirmada!</div>
+        <div class="success-name" id="successNome"></div>
+        <div style="font-size:13px; color:var(--text2);">RA: <span id="successRA" style="font-weight:600;"></span></div>
+        <div class="success-badge" id="successEvento"></div>
+        <div class="success-time" id="successHora"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== STEP: ADMIN ===================== -->
+  <div class="step" id="stepAdmin">
+
+    <div class="admin-header">
+      <h2>Painel Admin</h2>
+      <div class="count-badge" id="adminCount">0 presentes</div>
+    </div>
+
+    <!-- Config aviso -->
+    <div class="config-notice">
+      <strong>⚙ Configurações do evento</strong>
+      Edite as variáveis no início do arquivo HTML para personalizar: nome da faculdade, coordenadas GPS, senha admin, raio de tolerância e a configuração do Firebase.
+    </div>
+
+    <!-- Config evento -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:16px;">📝 Detalhes do evento</div>
+      <div class="field">
+        <label>Nome do evento</label>
+        <input type="text" id="adminEvento" placeholder="Ex: Semana Acadêmica" />
+      </div>
+      <button class="btn btn-secondary" onclick="salvarEvento()">Salvar nome do evento</button>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Lista -->
+    <div id="listaVazia" class="empty-state" style="display:none">
+      <div style="font-size:32px;margin-bottom:12px;">📋</div>
+      Nenhuma presença registrada ainda.
+    </div>
+    <div class="attendee-list" id="listaPresencas"></div>
+
+    <!-- Export -->
+    <div class="export-row">
+      <button class="btn btn-secondary" onclick="exportarCSV()">⬇ Exportar CSV</button>
+      <button class="btn btn-secondary" style="border-color:var(--danger-dim);color:var(--danger);" onclick="limparLista()">🗑 Limpar lista</button>
+    </div>
+
+    <hr class="divider">
+    <button class="btn btn-secondary" onclick="voltarParaRegistro()">← Voltar ao formulário</button>
+  </div>
+
+</div>
+
+<!-- Modal Admin Login -->
+<div class="modal-overlay" id="modalAdmin">
+  <div class="modal">
+    <h3>Acesso admin</h3>
+    <p>Digite a senha para acessar o painel de administração.</p>
+    <div class="field">
+      <label>Senha</label>
+      <input type="password" id="senhaInput" placeholder="••••••••" onkeydown="if(event.key==='Enter')loginAdmin()" />
+    </div>
+    <div class="error-msg" id="erroSenha" style="display:block; visibility:hidden; height:16px;"></div>
+    <div class="modal-btns">
+      <button class="btn btn-secondary" onclick="fecharModalAdmin()">Cancelar</button>
+      <button class="btn btn-primary" onclick="loginAdmin()">Entrar</button>
+    </div>
+  </div>
+</div>
 
 <script>
-    // ─────────────────────────────────────────
-    // 1. CONFIGURAÇÃO FIREBASE
-    // ─────────────────────────────────────────
-    const firebaseConfig = {
-        apiKey: "AIzaSyBj_EROdXPVeM76p7zVLvCoCrj9VwARsgY",
-        authDomain: "presenca-fatec.firebaseapp.com",
-        databaseURL: "https://presenca-fatec-default-rtdb.firebaseio.com",
-        projectId: "presenca-fatec",
-        storageBucket: "presenca-fatec.firebasestorage.app",
-        messagingSenderId: "703947091483",
-        appId: "1:703947091483:web:c307f987e6436582dbd2be"
+// ===============================================================
+// STATE
+// ===============================================================
+let locStatus = 'idle'; // idle | checking | ok | fail
+let adminLogado = false;
+let ultimaPosicao = null; // { lat, lng } da última verificação de GPS bem-sucedida
+let presencasCache = [];  // espelho local do que está no Firebase (para o painel admin)
+
+// ---------------------------------------------------------------
+// DEVICE ID — identificador persistente do navegador/aparelho
+// ---------------------------------------------------------------
+function getDeviceId() {
+  let id = localStorage.getItem('deviceId');
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : 'dev-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+    localStorage.setItem('deviceId', id);
+  }
+  return id;
+}
+
+// ---------------------------------------------------------------
+// EVENTO ATUAL — vira uma "chave" segura para organizar os dados no Firebase
+// ---------------------------------------------------------------
+function slugify(s) {
+  return String(s)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '') || 'evento';
+}
+function getEventoId() {
+  return slugify(getEventoNome());
+}
+function getEventoNome() {
+  return localStorage.getItem('nomeEvento') || CONFIG.nomeEvento;
+}
+function setEventoNome(n) {
+  localStorage.setItem('nomeEvento', n);
+}
+
+// ---------------------------------------------------------------
+// PRESENÇAS — agora vivem no Firebase Realtime Database, não mais no localStorage,
+// para que o painel admin veja os check-ins feitos nos celulares dos alunos.
+// Estrutura:
+//   attendance/{eventoId}/{pushId}      -> registro completo da presença
+//   deviceCheckins/{eventoId}/{deviceId} -> último check-in daquele aparelho (bloqueio)
+// ---------------------------------------------------------------
+function getPresencas() {
+  return presencasCache;
+}
+
+function escutarPresencas() {
+  db.ref('attendance/' + getEventoId()).on('value', snap => {
+    const val = snap.val() || {};
+    presencasCache = Object.keys(val).map(key => ({ _key: key, ...val[key] }));
+    presencasCache.sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+    if (adminLogado) renderAdmin();
+  });
+}
+
+async function verificarDispositivoJaConfirmou(eventoId, deviceId) {
+  const snap = await db.ref('deviceCheckins/' + eventoId + '/' + deviceId).get();
+  return snap.exists() ? snap.val() : null;
+}
+
+// ===============================================================
+// INIT
+// ===============================================================
+function init() {
+  document.getElementById('headerTitle').textContent = CONFIG.nomeFaculdade;
+  document.getElementById('headerEvent').textContent = getEventoNome();
+  document.getElementById('headerLabel').textContent = 'Lista de Presença';
+
+  if (!CONFIG.exigirLocalizacao) {
+    document.getElementById('locCard').style.display = 'none';
+    locStatus = 'ok';
+    atualizarBotaoRegistrar();
+  }
+
+  document.getElementById('inputNome').addEventListener('input', atualizarBotaoRegistrar);
+  document.getElementById('inputRA').addEventListener('input', atualizarBotaoRegistrar);
+
+  escutarPresencas();
+}
+
+// ===============================================================
+// LOCALIZAÇÃO
+// ===============================================================
+function verificarLocalizacao() {
+  if (!navigator.geolocation) {
+    setLocStatus('fail', 'GPS não suportado', 'Seu navegador não suporta geolocalização.');
+    if (!CONFIG.exigirLocalizacao) { locStatus = 'ok'; atualizarBotaoRegistrar(); }
+    return;
+  }
+  setLocStatus('checking', 'Verificando...', 'Aguardando permissão de localização...');
+  document.getElementById('btnLoc').disabled = true;
+
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const dist = calcDistancia(pos.coords.latitude, pos.coords.longitude, CONFIG.lat, CONFIG.lng);
+      const distM = Math.round(dist);
+      if (dist <= CONFIG.raioMetros) {
+        setLocStatus('ok', 'Localização confirmada ✓', `Você está a ${distM}m do local do evento.`);
+        locStatus = 'ok';
+        ultimaPosicao = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+      } else {
+        setLocStatus('fail', 'Fora do local do evento', `Você está a ${distM}m (limite: ${CONFIG.raioMetros}m). Aproxime-se do local.`);
+        locStatus = 'fail';
+        document.getElementById('btnLoc').disabled = false;
+      }
+      atualizarBotaoRegistrar();
+    },
+    err => {
+      const msgs = {
+        1: 'Permissão negada. Habilite o GPS nas configurações do navegador.',
+        2: 'Posição indisponível. Verifique se o GPS está ativo.',
+        3: 'Tempo esgotado. Tente novamente.'
+      };
+      setLocStatus('fail', 'Erro de localização', msgs[err.code] || 'Erro desconhecido.');
+      locStatus = 'fail';
+      document.getElementById('btnLoc').disabled = false;
+      if (!CONFIG.exigirLocalizacao) { locStatus = 'ok'; atualizarBotaoRegistrar(); }
+    },
+    { timeout: 10000, enableHighAccuracy: true }
+  );
+}
+
+function setLocStatus(tipo, titulo, sub) {
+  const dot = document.getElementById('locDot');
+  dot.className = 'loc-dot ' + (tipo === 'checking' ? 'checking' : tipo === 'ok' ? 'ok' : tipo === 'fail' ? 'fail' : '');
+  document.getElementById('locTitle').textContent = titulo;
+  document.getElementById('locSub').textContent = sub;
+}
+
+function calcDistancia(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+// ===============================================================
+// BOTÃO REGISTRAR
+// ===============================================================
+function atualizarBotaoRegistrar() {
+  const nome = document.getElementById('inputNome').value.trim();
+  const ra   = document.getElementById('inputRA').value.trim();
+  const locOk = locStatus === 'ok';
+  document.getElementById('btnRegistrar').disabled = !(nome && ra && locOk);
+}
+
+// ===============================================================
+// REGISTRAR PRESENÇA
+// ===============================================================
+async function registrarPresenca() {
+  const nome = document.getElementById('inputNome').value.trim();
+  const ra   = document.getElementById('inputRA').value.trim();
+  const erro = document.getElementById('erroForm');
+  const btn  = document.getElementById('btnRegistrar');
+  erro.style.display = 'none';
+
+  if (!nome || !ra) {
+    erro.textContent = 'Preencha todos os campos.';
+    erro.style.display = 'block';
+    return;
+  }
+  if (CONFIG.exigirLocalizacao && locStatus !== 'ok') {
+    erro.textContent = 'Verificação de localização necessária.';
+    erro.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Confirmando...';
+
+  try {
+    const eventoId = getEventoId();
+    const deviceId = getDeviceId();
+
+    // 1) Bloqueio por dispositivo: este aparelho já confirmou presença
+    //    (com QUALQUER nome/RA) para este evento?
+    if (CONFIG.bloquearDispositivoDuplicado) {
+      const checkin = await verificarDispositivoJaConfirmou(eventoId, deviceId);
+      if (checkin && checkin.nome !== nome) {
+        erro.textContent = `Este aparelho já confirmou presença como "${checkin.nome}" neste evento. Não é possível confirmar com outro nome pelo mesmo dispositivo.`;
+        erro.style.display = 'block';
+        return;
+      }
+    }
+
+    // 2) Duplicidade de RA (checa contra os dados já sincronizados do Firebase)
+    if (!CONFIG.permitirDuplicata) {
+      const jaExiste = presencasCache.find(p => p.ra === ra);
+      if (jaExiste) {
+        erro.textContent = `RA ${ra} já registrado às ${jaExiste.hora}.`;
+        erro.style.display = 'block';
+        return;
+      }
+    }
+
+    const agora = new Date();
+    const reg = {
+      nome,
+      ra,
+      evento: getEventoNome(),
+      hora: agora.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }),
+      data: agora.toLocaleDateString('pt-BR'),
+      ts: agora.toISOString(),
+      deviceId,
+      lat: ultimaPosicao ? ultimaPosicao.lat : null,
+      lng: ultimaPosicao ? ultimaPosicao.lng : null,
+      accuracy: ultimaPosicao ? ultimaPosicao.accuracy : null
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const database = firebase.database();
+    // Grava o registro de presença
+    await db.ref('attendance/' + eventoId).push(reg);
 
-    const CONFIG_ADMIN = {
-        senhaHash: "RmF0ZWNAMjAyNg==" // Fatec@2026
-    };
+    // Marca este dispositivo como já usado neste evento (usado no bloqueio acima)
+    await db.ref('deviceCheckins/' + eventoId + '/' + deviceId).set({
+      nome, ra, ts: reg.ts
+    });
 
-    // ─────────────────────────────────────────
-    // 2. CONFIGURAÇÃO DO EVENTO
-    // ─────────────────────────────────────────
-    const COORDENADAS = { lat: -22.64925425676289, lng: -50.43753606181999, raio: 500 };
-    let gpsOk = false;
+    // Exibir sucesso
+    document.getElementById('successNome').textContent = nome;
+    document.getElementById('successRA').textContent = ra;
+    document.getElementById('successEvento').textContent = getEventoNome();
+    document.getElementById('successHora').textContent = `Registrado em ${reg.data} às ${reg.hora}`;
 
-    const GPS_OPTIONS = {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-    };
+    mostrarStep('stepSucesso');
+  } catch (e) {
+    console.error(e);
+    erro.textContent = 'Erro ao conectar com o servidor. Verifique sua internet e tente novamente.';
+    erro.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Confirmar presença';
+  }
+}
 
-    // ─────────────────────────────────────────
-    // 3. DEVICE FINGERPRINT
-    // Gera um ID único para o dispositivo/navegador
-    // sem precisar de bibliotecas externas.
-    // ─────────────────────────────────────────
-    function gerarFingerprint() {
-        const componentes = [];
+// ===============================================================
+// ADMIN
+// ===============================================================
+function abrirModalAdmin() {
+  document.getElementById('senhaInput').value = '';
+  document.getElementById('erroSenha').style.visibility = 'hidden';
+  document.getElementById('modalAdmin').classList.add('open');
+  setTimeout(() => document.getElementById('senhaInput').focus(), 100);
+}
+function fecharModalAdmin() {
+  document.getElementById('modalAdmin').classList.remove('open');
+}
+function loginAdmin() {
+  const senha = document.getElementById('senhaInput').value;
+  if (senha === CONFIG.senhaAdmin) {
+    fecharModalAdmin();
+    adminLogado = true;
+    mostrarStep('stepAdmin');
+    renderAdmin();
+  } else {
+    const err = document.getElementById('erroSenha');
+    err.textContent = 'Senha incorreta.';
+    err.style.visibility = 'visible';
+  }
+}
+function voltarParaRegistro() {
+  adminLogado = false;
+  mostrarStep('stepRegistro');
+}
+function salvarEvento() {
+  const v = document.getElementById('adminEvento').value.trim();
+  if (v) {
+    setEventoNome(v);
+    document.getElementById('headerEvent').textContent = v;
+    document.getElementById('adminEvento').value = '';
+    presencasCache = [];
+    escutarPresencas(); // troca o "canal" do Firebase para o novo evento
+    renderAdmin();
+  }
+}
 
-        // Canvas fingerprint (diferente por GPU/driver)
-        try {
-            const canvas = document.createElement("canvas");
-            const ctx = canvas.getContext("2d");
-            ctx.textBaseline = "top";
-            ctx.font = "14px Arial";
-            ctx.fillStyle = "#3bffbb";
-            ctx.fillText("fatec-fp-2025", 2, 2);
-            componentes.push(canvas.toDataURL().slice(-30));
-        } catch(e) { componentes.push("no-canvas"); }
+function renderAdmin() {
+  const presencas = getPresencas();
+  const lista = document.getElementById('listaPresencas');
+  const vazia = document.getElementById('listaVazia');
+  document.getElementById('adminEvento').placeholder = getEventoNome();
+  document.getElementById('adminCount').textContent = presencas.length + (presencas.length === 1 ? ' presente' : ' presentes');
 
-        // Dados do navegador e dispositivo
-        componentes.push(navigator.userAgent);
-        componentes.push(`${screen.width}x${screen.height}x${screen.colorDepth}`);
-        componentes.push(Intl.DateTimeFormat().resolvedOptions().timeZone);
-        componentes.push(navigator.language);
-        componentes.push(String(navigator.hardwareConcurrency || ""));
-        componentes.push(String(navigator.maxTouchPoints || ""));
+  if (presencas.length === 0) {
+    vazia.style.display = 'block';
+    lista.innerHTML = '';
+    return;
+  }
+  vazia.style.display = 'none';
 
-        // Gera hash numérico da string combinada
-        const str = componentes.join("||");
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            hash = ((hash << 5) - hash) + str.charCodeAt(i);
-            hash |= 0;
-        }
-        return Math.abs(hash).toString(16).padStart(8, "0");
-    }
+  lista.innerHTML = presencas.slice().reverse().map((p, i) => {
+    const idx = presencas.length - 1 - i;
+    const iniciais = p.nome.split(' ').slice(0,2).map(x=>x[0]).join('').toUpperCase();
+    return `<div class="attendee-item">
+      <div class="attendee-avatar">${iniciais}</div>
+      <div class="attendee-info">
+        <div class="attendee-name">${escHtml(p.nome)}</div>
+        <div class="attendee-meta">RA ${escHtml(p.ra)} · ${escHtml(p.evento)}</div>
+      </div>
+      <div class="attendee-time">${escHtml(p.hora)}</div>
+      <button class="delete-btn" onclick="excluirPresenca(${idx})" title="Remover">✕</button>
+    </div>`;
+  }).join('');
+}
 
-    // Gera o fingerprint uma vez ao carregar a página
-    const DEVICE_ID = gerarFingerprint();
+function excluirPresenca(idx) {
+  const p = getPresencas()[idx];
+  if (!p || !p._key) return;
+  db.ref('attendance/' + getEventoId() + '/' + p._key).remove();
+  // também libera o dispositivo, caso o professor precise deixar o aluno registrar de novo
+  if (p.deviceId) {
+    db.ref('deviceCheckins/' + getEventoId() + '/' + p.deviceId).remove();
+  }
+}
 
-    // ─────────────────────────────────────────
-    // 4. LÓGICA DE GPS
-    // ─────────────────────────────────────────
-    function verificarGps() {
-        if (!navigator.geolocation) return alert("GPS não disponível");
-        document.getElementById('gps-status').innerText = "📡 Verificando localização...";
+function limparLista() {
+  if (confirm('Tem certeza? Isso apagará TODAS as presenças registradas deste evento.')) {
+    db.ref('attendance/' + getEventoId()).remove();
+    db.ref('deviceCheckins/' + getEventoId()).remove();
+  }
+}
 
-        navigator.geolocation.getCurrentPosition(
-            pos => {
-                const dist = calcularDistancia(
-                    pos.coords.latitude, pos.coords.longitude,
-                    COORDENADAS.lat, COORDENADAS.lng
-                );
-                if (dist <= COORDENADAS.raio) {
-                    gpsOk = true;
-                    document.getElementById('gps-status').innerText = "✅ Você está no local!";
-                } else {
-                    gpsOk = false;
-                    document.getElementById('gps-status').innerText =
-                        `❌ Fora do local (${Math.round(dist)}m de distância)`;
-                }
-                liberarBotao();
-            },
-            () => {
-                gpsOk = false;
-                document.getElementById('gps-status').innerText = "⚠️ Ative o GPS para continuar";
-                liberarBotao();
-            },
-            GPS_OPTIONS
-        );
-    }
+function exportarCSV() {
+  const presencas = getPresencas();
+  if (presencas.length === 0) { alert('Nenhuma presença para exportar.'); return; }
+  const header = 'Nome,RA,Evento,Data,Hora\n';
+  const rows = presencas.map(p => `"${p.nome}","${p.ra}","${p.evento}","${p.data}","${p.hora}"`).join('\n');
+  const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `presencas_${getEventoNome().replace(/\s+/g,'_')}_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
-    function calcularDistancia(lat1, lon1, lat2, lon2) {
-        const R = 6371e3;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) ** 2 +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                  Math.sin(dLon / 2) ** 2;
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
+// ===============================================================
+// HELPERS
+// ===============================================================
+function mostrarStep(id) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
-    function liberarBotao() {
-        const nome  = document.getElementById('nome').value.trim();
-        const curso = document.getElementById('curso').value;
-        document.getElementById('btn-checkin').disabled = !(nome && curso && gpsOk);
-    }
-
-    document.getElementById('nome').oninput   = liberarBotao;
-    document.getElementById('curso').onchange = liberarBotao;
-
-    // ─────────────────────────────────────────
-    // 5. CHECK-IN COM ANTI-FRAUDE
-    // ─────────────────────────────────────────
-    function realizarCheckin() {
-        const btn  = document.getElementById('btn-checkin');
-        const nome = document.getElementById('nome').value.trim();
-        const curso = document.getElementById('curso').value;
-
-        btn.disabled = true;
-        btn.innerText = "Verificando...";
-
-        // Consulta o Firebase para detectar duplicidade de dispositivo
-        database.ref('presencas').once('value', snapshot => {
-            let deviceJaUsado = false;
-            let nomeAnterior  = "";
-
-            snapshot.forEach(item => {
-                const p = item.val();
-                // Mesmo deviceId, mas nome diferente = possível fraude
-                if (p.deviceId === DEVICE_ID && p.nome !== nome) {
-                    deviceJaUsado = true;
-                    nomeAnterior  = p.nome;
-                }
-            });
-
-            const status = deviceJaUsado ? "suspeito" : "válido";
-
-            const dados = {
-                nome,
-                curso,
-                horario:  new Date().toLocaleTimeString('pt-BR'),
-                deviceId: DEVICE_ID,
-                status
-            };
-
-            database.ref('presencas').push(dados).then(() => {
-                if (status === "suspeito") {
-                    alert(`⚠️ Presença registrada, mas marcada como SUSPEITA.\nEste dispositivo já foi usado por: ${nomeAnterior}`);
-                } else {
-                    alert("✅ Presença confirmada!");
-                }
-                location.reload();
-            }).catch(err => {
-                alert("Erro ao salvar: " + err.message);
-                btn.disabled = false;
-                btn.innerText = "Confirmar Presença";
-            });
-        });
-    }
-
-    // ─────────────────────────────────────────
-    // 6. PAINEL ADMIN
-    // ─────────────────────────────────────────
-    let filtroAtivo = 'todos';
-
-    function acessoAdmin() {
-        const pass = prompt("Senha Admin:");
-        if (btoa(pass) === CONFIG_ADMIN.senhaHash) {
-            document.getElementById('app-registro').style.display = 'none';
-            document.getElementById('app-admin').style.display   = 'block';
-            ouvirPresencas();
-        } else {
-            alert("Senha incorreta.");
-        }
-    }
-
-    function ouvirPresencas() {
-        database.ref('presencas').on('value', snapshot => {
-            const lista = [];
-            snapshot.forEach(item => { lista.push({ key: item.key, ...item.val() }); });
-            window.dadosParaExportar = lista;
-            renderizarLista(lista);
-        });
-    }
-
-    function renderizarLista(lista) {
-        const filtrada = filtroAtivo === 'todos'
-            ? lista
-            : lista.filter(p => p.status === filtroAtivo);
-
-        const total    = lista.length;
-        const suspeitos = lista.filter(p => p.status === 'suspeito').length;
-
-        document.getElementById('contagem').innerHTML =
-            `${total} presença(s) — ` +
-            `<span style="color:#3bffbb">${total - suspeitos} válidas</span> · ` +
-            `<span style="color:#ffc800">${suspeitos} suspeitas</span>`;
-
-        document.getElementById('lista-presencas').innerHTML =
-            filtrada.slice().reverse().map(p => {
-                const badge = p.status === 'suspeito'
-                    ? `<span class="badge badge-suspeito">⚠️ suspeito</span>`
-                    : `<span class="badge badge-valido">✅ válido</span>`;
-                return `
-                    <div class="presenca-item">
-                        <span><strong>${p.nome}</strong> (${p.curso})</span>
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            ${badge}
-                            <span style="color:var(--accent);white-space:nowrap">${p.horario}</span>
-                        </div>
-                    </div>`;
-            }).join('') || "<p style='color:#666;text-align:center'>Nenhuma presença encontrada.</p>";
-    }
-
-    function filtrarLista(status) {
-        filtroAtivo = status;
-        // Destaca botão ativo
-        ['todos','valido','suspeito'].forEach(id => {
-            document.getElementById('f-' + id).style.borderColor = '';
-        });
-        const mapa = { todos: 'f-todos', 'válido': 'f-valido', suspeito: 'f-suspeito' };
-        if (mapa[status]) document.getElementById(mapa[status]).style.borderColor = '#3bffbb';
-
-        if (window.dadosParaExportar) renderizarLista(window.dadosParaExportar);
-    }
-
-    function exportarCSV() {
-        if (!window.dadosParaExportar || window.dadosParaExportar.length === 0) {
-            alert("Nenhum dado para exportar.");
-            return;
-        }
-        let csv = "Nome;Curso;Horario;Status;DeviceID\n";
-        window.dadosParaExportar.forEach(p => {
-            csv += `${p.nome};${p.curso};${p.horario};${p.status || 'válido'};${p.deviceId || ''}\n`;
-        });
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href     = url;
-        a.download = 'lista_presenca.csv';
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-
-    function limparLista() {
-        if (!confirm("⚠️ Tem certeza? Isso apagará TODAS as presenças do Firebase. Esta ação não pode ser desfeita.")) return;
-        database.ref('presencas').remove()
-            .then(() => alert("Lista limpa com sucesso!"))
-            .catch(err => alert("Erro ao limpar: " + err.message));
-    }
-
-    function irParaRegistro() {
-        document.getElementById('app-registro').style.display = 'block';
-        document.getElementById('app-admin').style.display   = 'none';
-    }
-
-    window.onload = verificarGps;
+// ===============================================================
+// START
+// ===============================================================
+init();
 </script>
 </body>
 </html>
