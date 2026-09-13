@@ -189,6 +189,25 @@
   }
   .field input::placeholder { color: var(--text3); }
   .field input:focus { border-color: var(--accent); }
+  .field select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-sm);
+    padding: 13px 16px;
+    font-size: 15px;
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    outline: none;
+    transition: border-color 0.2s;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 18px;
+  }
+  .field select:focus { border-color: var(--accent); }
 
   /* BUTTON */
   .btn {
@@ -445,11 +464,11 @@ const CONFIG = {
 
   /* Coordenadas da faculdade (latitude, longitude) */
   /* Para obter: acesse maps.google.com, clique com botão direito no local e copie as coordenadas */
-  lat: -22.650636,
-  lng: -50.438747,
+  lat: -22.650502060848645,
+  lng: -50.43876684906718,
 
   /* Raio tolerado em metros (ex: 200 = 200 metros ao redor da faculdade) */
-  raioMetros: 50,
+  raioMetros: 80,
 
   /* Exigir verificação de localização para registrar? */
   /* true = sim (mais seguro) | false = não (sem restrição) */
@@ -535,6 +554,19 @@ const db = firebase.database();
         <input type="text" id="inputRA" placeholder="Ex: GTI/GCOM" inputmode="text" />
       </div>
 
+      <div class="field">
+        <label>Semestre</label>
+        <select id="inputSemestre">
+          <option value="" disabled selected>Selecione o semestre</option>
+          <option value="1">1º semestre</option>
+          <option value="2">2º semestre</option>
+          <option value="3">3º semestre</option>
+          <option value="4">4º semestre</option>
+          <option value="5">5º semestre</option>
+          <option value="6">6º semestre</option>
+        </select>
+      </div>
+
       <div class="error-msg" id="erroForm"></div>
 
       <button class="btn btn-primary" id="btnRegistrar" onclick="registrarPresenca()" disabled>
@@ -552,6 +584,7 @@ const db = firebase.database();
         <div class="success-title">Presença confirmada!</div>
         <div class="success-name" id="successNome"></div>
         <div style="font-size:13px; color:var(--text2);">RA: <span id="successRA" style="font-weight:600;"></span></div>
+        <div style="font-size:13px; color:var(--text2);">Semestre: <span id="successSemestre" style="font-weight:600;"></span></div>
         <div class="success-badge" id="successEvento"></div>
         <div class="success-time" id="successHora"></div>
       </div>
@@ -702,6 +735,7 @@ function init() {
 
   document.getElementById('inputNome').addEventListener('input', atualizarBotaoRegistrar);
   document.getElementById('inputRA').addEventListener('input', atualizarBotaoRegistrar);
+  document.getElementById('inputSemestre').addEventListener('change', atualizarBotaoRegistrar);
 
   escutarPresencas();
 }
@@ -767,23 +801,25 @@ function calcDistancia(lat1, lon1, lat2, lon2) {
 // BOTÃO REGISTRAR
 // ===============================================================
 function atualizarBotaoRegistrar() {
-  const nome = document.getElementById('inputNome').value.trim();
-  const ra   = document.getElementById('inputRA').value.trim();
+  const nome     = document.getElementById('inputNome').value.trim();
+  const ra       = document.getElementById('inputRA').value.trim();
+  const semestre = document.getElementById('inputSemestre').value;
   const locOk = locStatus === 'ok';
-  document.getElementById('btnRegistrar').disabled = !(nome && ra && locOk);
+  document.getElementById('btnRegistrar').disabled = !(nome && ra && semestre && locOk);
 }
 
 // ===============================================================
 // REGISTRAR PRESENÇA
 // ===============================================================
 async function registrarPresenca() {
-  const nome = document.getElementById('inputNome').value.trim();
-  const ra   = document.getElementById('inputRA').value.trim();
+  const nome     = document.getElementById('inputNome').value.trim();
+  const ra       = document.getElementById('inputRA').value.trim();
+  const semestre = document.getElementById('inputSemestre').value;
   const erro = document.getElementById('erroForm');
   const btn  = document.getElementById('btnRegistrar');
   erro.style.display = 'none';
 
-  if (!nome || !ra) {
+  if (!nome || !ra || !semestre) {
     erro.textContent = 'Preencha todos os campos.';
     erro.style.display = 'block';
     return;
@@ -826,6 +862,7 @@ async function registrarPresenca() {
     const reg = {
       nome,
       ra,
+      semestre,
       evento: getEventoNome(),
       hora: agora.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }),
       data: agora.toLocaleDateString('pt-BR'),
@@ -847,6 +884,7 @@ async function registrarPresenca() {
     // Exibir sucesso
     document.getElementById('successNome').textContent = nome;
     document.getElementById('successRA').textContent = ra;
+    document.getElementById('successSemestre').textContent = semestre + 'º semestre';
     document.getElementById('successEvento').textContent = getEventoNome();
     document.getElementById('successHora').textContent = `Registrado em ${reg.data} às ${reg.hora}`;
 
@@ -923,7 +961,7 @@ function renderAdmin() {
       <div class="attendee-avatar">${iniciais}</div>
       <div class="attendee-info">
         <div class="attendee-name">${escHtml(p.nome)}</div>
-        <div class="attendee-meta">RA ${escHtml(p.ra)} · ${escHtml(p.evento)}</div>
+        <div class="attendee-meta">RA ${escHtml(p.ra)} · ${p.semestre ? escHtml(p.semestre) + 'º sem. · ' : ''}${escHtml(p.evento)}</div>
       </div>
       <div class="attendee-time">${escHtml(p.hora)}</div>
       <button class="delete-btn" onclick="excluirPresenca(${idx})" title="Remover">✕</button>
@@ -951,8 +989,8 @@ function limparLista() {
 function exportarCSV() {
   const presencas = getPresencas();
   if (presencas.length === 0) { alert('Nenhuma presença para exportar.'); return; }
-  const header = 'Nome,RA,Evento,Data,Hora\n';
-  const rows = presencas.map(p => `"${p.nome}","${p.ra}","${p.evento}","${p.data}","${p.hora}"`).join('\n');
+  const header = 'Nome,RA,Semestre,Evento,Data,Hora\n';
+  const rows = presencas.map(p => `"${p.nome}","${p.ra}","${p.semestre || ''}","${p.evento}","${p.data}","${p.hora}"`).join('\n');
   const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
