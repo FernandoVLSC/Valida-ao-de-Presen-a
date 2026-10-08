@@ -460,6 +460,8 @@ const CONFIG = {
   /* Nome do evento (pode ser alterado pelo admin depois) */
   nomeEvento: "Evento Letivo",
 
+  /* O login do admin agora é feito pelo Firebase Authentication (e-mail + senha).
+     A senha NÃO fica mais no código — ela é guardada no Firebase. */
 
   /* Coordenadas da faculdade (latitude, longitude) */
   /* Para obter: acesse maps.google.com, clique com botão direito no local e copie as coordenadas */
@@ -467,7 +469,7 @@ const CONFIG = {
   lng: -50.4388044576727,
 
   /* Raio tolerado em metros (ex: 200 = 200 metros ao redor da faculdade) */
-  raioMetros: 200,
+  raioMetros: 150,
 
   /* Exigir verificação de localização para registrar? */
   /* true = sim (mais seguro) | false = não (sem restrição) */
@@ -773,37 +775,68 @@ function verificarLocalizacao() {
     if (!CONFIG.exigirLocalizacao) { locStatus = 'ok'; atualizarBotaoRegistrar(); }
     return;
   }
-  setLocStatus('checking', 'Verificando...', 'Aguardando permissão de localização...');
+  setLocStatus('checking', 'Verificando...', 'Buscando sinal de GPS (pode levar até 25 segundos)...');
   document.getElementById('btnLoc').disabled = true;
 
-  navigator.geolocation.getCurrentPosition(
-    pos => {
-      const dist = calcDistancia(pos.coords.latitude, pos.coords.longitude, CONFIG.lat, CONFIG.lng);
-      const distM = Math.round(dist);
-      if (dist <= CONFIG.raioMetros) {
-        setLocStatus('ok', 'Localização confirmada ✓', `Você está a ${distM}m do local do evento.`);
-        locStatus = 'ok';
-        ultimaPosicao = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
-      } else {
-        setLocStatus('fail', 'Fora do local do evento', `Você está a ${distM}m (limite: ${CONFIG.raioMetros}m). Aproxime-se do local.`);
-        locStatus = 'fail';
-        document.getElementById('btnLoc').disabled = false;
-      }
+  const TEMPO_MAX = 25000;  // tempo total de busca (ms)
+  const PRECISAO_OK = 30;   // para antes se atingir essa precisão (m)
+  let melhor = null, encerrado = false, watchId = null, timer = null;
+
+  const falhar = (titulo, msg) => {
+    setLocStatus('fail', titulo, msg);
+    locStatus = 'fail';
+    document.getElementById('btnLoc').disabled = false;
+    if (!CONFIG.exigirLocalizacao) { locStatus = 'ok'; }
+    atualizarBotaoRegistrar();
+  };
+
+  const parar = () => {
+    encerrado = true;
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    clearTimeout(timer);
+  };
+
+  const encerrar = () => {
+    if (encerrado) return;
+    parar();
+
+    if (!melhor) {
+      falhar('Erro de localização', 'Não foi possível obter sinal de GPS. Vá para perto de uma janela, confirme que a localização do aparelho está ligada e tente novamente.');
+      return;
+    }
+    const { latitude, longitude, accuracy } = melhor.coords;
+    const dist = calcDistancia(latitude, longitude, CONFIG.lat, CONFIG.lng);
+    // desconta a margem de erro do aparelho (no máximo 50m)
+    const distEfetiva = Math.max(0, dist - Math.min(accuracy, 50));
+
+    if (distEfetiva <= CONFIG.raioMetros) {
+      setLocStatus('ok', 'Localização confirmada ✓',
+        `Você está a cerca de ${Math.round(dist)}m do local (precisão ±${Math.round(accuracy)}m).`);
+      locStatus = 'ok';
+      ultimaPosicao = { lat: latitude, lng: longitude, accuracy };
       atualizarBotaoRegistrar();
+    } else {
+      falhar('Fora do local do evento',
+        `Você está a cerca de ${Math.round(dist)}m (precisão ±${Math.round(accuracy)}m, limite: ${CONFIG.raioMetros}m). Aproxime-se do local e tente de novo.`);
+    }
+  };
+
+  watchId = navigator.geolocation.watchPosition(
+    pos => {
+      if (!melhor || pos.coords.accuracy < melhor.coords.accuracy) melhor = pos;
+      if (pos.coords.accuracy <= PRECISAO_OK) encerrar();
     },
     err => {
-      const msgs = {
-        1: 'Permissão negada. Habilite o GPS nas configurações do navegador.',
-        2: 'Posição indisponível. Verifique se o GPS está ativo.',
-        3: 'Tempo esgotado. Tente novamente.'
-      };
-      setLocStatus('fail', 'Erro de localização', msgs[err.code] || 'Erro desconhecido.');
-      locStatus = 'fail';
-      document.getElementById('btnLoc').disabled = false;
-      if (!CONFIG.exigirLocalizacao) { locStatus = 'ok'; atualizarBotaoRegistrar(); }
+      if (err.code === 1) {
+        // permissão negada: não adianta continuar tentando
+        parar();
+        falhar('Permissão negada', 'Habilite a localização para este site (e abra o link no Chrome/Safari, não dentro de outro app).');
+      }
+      // outros erros (sinal fraco/tempo): continua tentando até o tempo total acabar
     },
-    { timeout: 10000, enableHighAccuracy: true }
+    { enableHighAccuracy: true, timeout: TEMPO_MAX, maximumAge: 0 }
   );
+  timer = setTimeout(encerrar, TEMPO_MAX);
 }
 
 function setLocStatus(tipo, titulo, sub) {
