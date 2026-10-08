@@ -7,9 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<!-- Firebase (Realtime Database) -->
+<!-- Firebase (Realtime Database + Authentication) -->
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <style>
   :root {
     --bg: #0b0f1a;
@@ -459,8 +460,8 @@ const CONFIG = {
   /* Nome do evento (pode ser alterado pelo admin depois) */
   nomeEvento: "Evento Letivo",
 
-  /* Senha do painel admin */
-  senhaAdmin: "Fatec@2026",
+  /* O login do admin agora é feito pelo Firebase Authentication (e-mail + senha).
+     A senha NÃO fica mais no código — ela é guardada no Firebase. */
 
   /* Coordenadas da faculdade (latitude, longitude) */
   /* Para obter: acesse maps.google.com, clique com botão direito no local e copie as coordenadas */
@@ -499,6 +500,9 @@ const CONFIG = {
 
 firebase.initializeApp(CONFIG.firebase);
 const db = firebase.database();
+const auth = firebase.auth();
+// A sessão do admin termina quando a aba/navegador é fechado
+auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(() => {});
 </script>
 
 <!-- HEADER -->
@@ -602,7 +606,7 @@ const db = firebase.database();
     <!-- Config aviso -->
     <div class="config-notice">
       <strong>⚙ Configurações do evento</strong>
-      Edite as variáveis no início do arquivo HTML para personalizar: nome da faculdade, coordenadas GPS, senha admin, raio de tolerância e a configuração do Firebase.
+      Edite as variáveis no início do arquivo HTML para personalizar: nome da faculdade, coordenadas GPS, raio de tolerância e a configuração do Firebase.
     </div>
 
     <!-- Config evento -->
@@ -640,15 +644,19 @@ const db = firebase.database();
 <div class="modal-overlay" id="modalAdmin">
   <div class="modal">
     <h3>Acesso admin</h3>
-    <p>Digite a senha para acessar o painel de administração.</p>
+    <p>Entre com seu e-mail e senha de administrador.</p>
+    <div class="field">
+      <label>E-mail</label>
+      <input type="email" id="emailInput" placeholder="admin@exemplo.com" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('senhaInput').focus()" />
+    </div>
     <div class="field">
       <label>Senha</label>
-      <input type="password" id="senhaInput" placeholder="••••••••" onkeydown="if(event.key==='Enter')loginAdmin()" />
+      <input type="password" id="senhaInput" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')loginAdmin()" />
     </div>
     <div class="error-msg" id="erroSenha" style="display:block; visibility:hidden; height:16px;"></div>
     <div class="modal-btns">
       <button class="btn btn-secondary" onclick="fecharModalAdmin()">Cancelar</button>
-      <button class="btn btn-primary" onclick="loginAdmin()">Entrar</button>
+      <button class="btn btn-primary" id="btnLoginAdmin" onclick="loginAdmin()">Entrar</button>
     </div>
   </div>
 </div>
@@ -705,13 +713,28 @@ function getPresencas() {
   return presencasCache;
 }
 
+// Só o admin (logado) tem permissão de LER a lista completa — as regras do
+// Firebase bloqueiam a leitura para qualquer outra pessoa.
+let presencasRef = null;
+function pararDeEscutarPresencas() {
+  if (presencasRef) { presencasRef.off(); presencasRef = null; }
+  presencasCache = [];
+}
 function escutarPresencas() {
-  db.ref('attendance/' + getEventoId()).on('value', snap => {
+  pararDeEscutarPresencas();
+  if (!adminLogado) return;
+  presencasRef = db.ref('attendance/' + getEventoId());
+  presencasRef.on('value', snap => {
     const val = snap.val() || {};
     presencasCache = Object.keys(val).map(key => ({ _key: key, ...val[key] }));
     presencasCache.sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
     if (adminLogado) renderAdmin();
-  });
+  }, err => console.error('Sem permissão para ler as presenças:', err));
+}
+
+// Chave segura (Firebase não aceita . # $ / [ ] em chaves) para o índice de RA
+function raKey(ra) {
+  return String(ra).trim().toLowerCase().replace(/[^a-z0-9]/g, '_') || 'ra';
 }
 
 async function verificarDispositivoJaConfirmou(eventoId, deviceId) {
@@ -737,7 +760,10 @@ function init() {
   document.getElementById('inputRA').addEventListener('input', atualizarBotaoRegistrar);
   document.getElementById('inputSemestre').addEventListener('change', atualizarBotaoRegistrar);
 
-  escutarPresencas();
+  // Se a sessão do admin expirar/for encerrada, volta para o formulário
+  auth.onAuthStateChanged(user => {
+    if (!user && adminLogado) voltarParaRegistro();
+  });
 }
 
 // ===============================================================
@@ -839,8 +865,9 @@ async function registrarPresenca() {
 
     // 1) Bloqueio por dispositivo: este aparelho já confirmou presença
     //    (com QUALQUER nome/RA) para este evento?
+    let checkin = null;
     if (CONFIG.bloquearDispositivoDuplicado) {
-      const checkin = await verificarDispositivoJaConfirmou(eventoId, deviceId);
+      checkin = await verificarDispositivoJaConfirmou(eventoId, deviceId);
       if (checkin && checkin.nome !== nome) {
         erro.textContent = `Este aparelho já confirmou presença como "${checkin.nome}" neste evento. Não é possível confirmar com outro nome pelo mesmo dispositivo.`;
         erro.style.display = 'block';
@@ -850,9 +877,9 @@ async function registrarPresenca() {
 
     // 2) Duplicidade de RA (checa contra os dados já sincronizados do Firebase)
     if (!CONFIG.permitirDuplicata) {
-      const jaExiste = presencasCache.find(p => p.ra === ra);
-      if (jaExiste) {
-        erro.textContent = `RA ${ra} já registrado às ${jaExiste.hora}.`;
+      const raSnap = await db.ref('raIndex/' + eventoId + '/' + raKey(ra)).get();
+      if (raSnap.exists()) {
+        erro.textContent = `RA ${ra} já registrado às ${raSnap.val()}.`;
         erro.style.display = 'block';
         return;
       }
@@ -876,10 +903,18 @@ async function registrarPresenca() {
     // Grava o registro de presença
     await db.ref('attendance/' + eventoId).push(reg);
 
-    // Marca este dispositivo como já usado neste evento (usado no bloqueio acima)
-    await db.ref('deviceCheckins/' + eventoId + '/' + deviceId).set({
-      nome, ra, ts: reg.ts
-    });
+    // Marca este dispositivo como já usado neste evento (usado no bloqueio acima).
+    // As regras só permitem CRIAR esse registro (nunca sobrescrever).
+    if (!checkin) {
+      await db.ref('deviceCheckins/' + eventoId + '/' + deviceId).set({
+        nome, ra, ts: reg.ts
+      });
+    }
+
+    // Índice de RA (para a checagem de duplicidade sem expor a lista completa)
+    if (!CONFIG.permitirDuplicata) {
+      await db.ref('raIndex/' + eventoId + '/' + raKey(ra)).set(reg.hora);
+    }
 
     // Exibir sucesso
     document.getElementById('successNome').textContent = nome;
@@ -906,26 +941,49 @@ function abrirModalAdmin() {
   document.getElementById('senhaInput').value = '';
   document.getElementById('erroSenha').style.visibility = 'hidden';
   document.getElementById('modalAdmin').classList.add('open');
-  setTimeout(() => document.getElementById('senhaInput').focus(), 100);
+  setTimeout(() => document.getElementById('emailInput').focus(), 100);
 }
 function fecharModalAdmin() {
   document.getElementById('modalAdmin').classList.remove('open');
 }
-function loginAdmin() {
+async function loginAdmin() {
+  const email = document.getElementById('emailInput').value.trim();
   const senha = document.getElementById('senhaInput').value;
-  if (senha === CONFIG.senhaAdmin) {
+  const err = document.getElementById('erroSenha');
+  const btn = document.getElementById('btnLoginAdmin');
+
+  const mostrarErro = msg => { err.textContent = msg; err.style.visibility = 'visible'; };
+  err.style.visibility = 'hidden';
+
+  if (!email || !senha) { mostrarErro('Informe e-mail e senha.'); return; }
+
+  btn.disabled = true;
+  try {
+    await auth.signInWithEmailAndPassword(email, senha);
+    document.getElementById('senhaInput').value = '';
     fecharModalAdmin();
     adminLogado = true;
     mostrarStep('stepAdmin');
+    escutarPresencas();
     renderAdmin();
-  } else {
-    const err = document.getElementById('erroSenha');
-    err.textContent = 'Senha incorreta.';
-    err.style.visibility = 'visible';
+  } catch (e) {
+    const msgs = {
+      'auth/invalid-credential': 'E-mail ou senha incorretos.',
+      'auth/wrong-password': 'E-mail ou senha incorretos.',
+      'auth/user-not-found': 'E-mail ou senha incorretos.',
+      'auth/invalid-email': 'E-mail inválido.',
+      'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos.',
+      'auth/network-request-failed': 'Sem conexão. Verifique sua internet.'
+    };
+    mostrarErro(msgs[e.code] || 'Não foi possível entrar.');
+  } finally {
+    btn.disabled = false;
   }
 }
 function voltarParaRegistro() {
   adminLogado = false;
+  pararDeEscutarPresencas();
+  auth.signOut().catch(() => {});
   mostrarStep('stepRegistro');
 }
 function salvarEvento() {
@@ -935,7 +993,7 @@ function salvarEvento() {
     document.getElementById('headerEvent').textContent = v;
     document.getElementById('adminEvento').value = '';
     presencasCache = [];
-    escutarPresencas(); // troca o "canal" do Firebase para o novo evento
+    escutarPresencas(); // troca o "canal" do Firebase para o novo evento (só admin)
     renderAdmin();
   }
 }
@@ -977,12 +1035,16 @@ function excluirPresenca(idx) {
   if (p.deviceId) {
     db.ref('deviceCheckins/' + getEventoId() + '/' + p.deviceId).remove();
   }
+  if (p.ra) {
+    db.ref('raIndex/' + getEventoId() + '/' + raKey(p.ra)).remove();
+  }
 }
 
 function limparLista() {
   if (confirm('Tem certeza? Isso apagará TODAS as presenças registradas deste evento.')) {
     db.ref('attendance/' + getEventoId()).remove();
     db.ref('deviceCheckins/' + getEventoId()).remove();
+    db.ref('raIndex/' + getEventoId()).remove();
   }
 }
 
