@@ -445,6 +445,46 @@
 
   /* SETTINGS panel */
   .settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  /* REGISTROS ENCERRADOS (tela do aluno) */
+  .closed-banner {
+    background: var(--danger-dim);
+    border: 1px solid rgba(255,92,124,0.25);
+    border-radius: var(--radius);
+    padding: 32px 24px;
+    text-align: center;
+    margin-bottom: 16px;
+    display: none;
+  }
+  .closed-banner .closed-icon { font-size: 34px; margin-bottom: 12px; }
+  .closed-banner strong {
+    display: block;
+    font-family: 'Syne', sans-serif;
+    font-size: 17px;
+    font-weight: 800;
+    color: var(--danger);
+    margin-bottom: 8px;
+  }
+  .closed-banner span { font-size: 13px; color: var(--text2); line-height: 1.6; }
+
+  /* CONTROLE DE REGISTROS (painel admin) */
+  .btn-lock {
+    background: transparent;
+    border: 1px solid rgba(255,92,124,0.4);
+    color: var(--danger);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+  }
+  .btn-lock:hover:not(:disabled) { background: var(--danger-dim); }
+  .btn-unlock {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+  }
+  .btn-unlock:hover:not(:disabled) { background: var(--accent-dim); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -518,6 +558,15 @@ auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(() => {});
   <!-- ===================== STEP: REGISTRO ===================== -->
   <div class="step active" id="stepRegistro">
 
+    <!-- Aviso quando o admin bloqueou os registros -->
+    <div class="closed-banner" id="avisoEncerrado">
+      <div class="closed-icon">🔒</div>
+      <strong>Registros encerrados</strong>
+      <span>A lista de presença não está recebendo novos nomes no momento.<br>Se você acredita que isso é um engano, fale com o responsável pelo evento.</span>
+    </div>
+
+    <div id="blocoRegistro">
+
     <!-- Status de localização -->
     <div id="locCard" class="card">
       <div class="card-title">
@@ -555,7 +604,11 @@ auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(() => {});
 
       <div class="field">
         <label>Curso</label>
-        <input type="text" id="inputRA" placeholder="Ex: GTI/GCOM" inputmode="text" />
+        <select id="inputCurso">
+          <option value="" disabled selected>Selecione o curso</option>
+          <option value="GTI">GTI</option>
+          <option value="GCOM">GCOM</option>
+        </select>
       </div>
 
       <div class="field">
@@ -578,6 +631,8 @@ auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(() => {});
       </button>
     </div>
 
+    </div><!-- /blocoRegistro -->
+
   </div>
 
   <!-- ===================== STEP: SUCESSO ===================== -->
@@ -587,7 +642,7 @@ auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(() => {});
         <div class="success-icon">✓</div>
         <div class="success-title">Presença confirmada!</div>
         <div class="success-name" id="successNome"></div>
-        <div style="font-size:13px; color:var(--text2);">RA: <span id="successRA" style="font-weight:600;"></span></div>
+        <div style="font-size:13px; color:var(--text2);">Curso: <span id="successRA" style="font-weight:600;"></span></div>
         <div style="font-size:13px; color:var(--text2);">Semestre: <span id="successSemestre" style="font-weight:600;"></span></div>
         <div class="success-badge" id="successEvento"></div>
         <div class="success-time" id="successHora"></div>
@@ -607,6 +662,19 @@ auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(() => {});
     <div class="config-notice">
       <strong>⚙ Configurações do evento</strong>
       Edite as variáveis no início do arquivo HTML para personalizar: nome da faculdade, coordenadas GPS, raio de tolerância e a configuração do Firebase.
+    </div>
+
+    <!-- Controle de registros -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:16px;">🔐 Recebimento de presenças</div>
+      <div class="loc-status" style="margin-bottom:16px;">
+        <div class="loc-dot ok" id="regDot"></div>
+        <div class="loc-text">
+          <strong id="regTitulo">Registros liberados</strong>
+          <span id="regSub">Os alunos podem enviar o nome normalmente.</span>
+        </div>
+      </div>
+      <button class="btn btn-lock" id="btnToggleRegistros" onclick="alternarRegistros()">🔒 Bloquear novos registros</button>
     </div>
 
     <!-- Config evento -->
@@ -669,6 +737,7 @@ let locStatus = 'idle'; // idle | checking | ok | fail
 let adminLogado = false;
 let ultimaPosicao = null; // { lat, lng } da última verificação de GPS bem-sucedida
 let presencasCache = [];  // espelho local do que está no Firebase (para o painel admin)
+let registrosAbertos = true; // false = admin bloqueou o envio de novos nomes
 
 // ---------------------------------------------------------------
 // DEVICE ID — identificador persistente do navegador/aparelho
@@ -742,6 +811,66 @@ async function verificarDispositivoJaConfirmou(eventoId, deviceId) {
   return snap.exists() ? snap.val() : null;
 }
 
+// ---------------------------------------------------------------
+// BLOQUEIO DE REGISTROS — chave global controlada pelo admin
+//   settings/registrationOpen -> true/ausente = liberado | false = bloqueado
+// Todos os aparelhos escutam essa chave em tempo real.
+// ---------------------------------------------------------------
+function escutarStatusRegistros() {
+  db.ref('settings/registrationOpen').on('value', snap => {
+    registrosAbertos = snap.val() !== false;
+    aplicarStatusRegistros();
+  }, err => {
+    // Se não conseguir ler (ex.: regras do Firebase ainda não atualizadas), não trava os alunos
+    console.error('Não foi possível ler settings/registrationOpen:', err);
+    registrosAbertos = true;
+    aplicarStatusRegistros();
+  });
+}
+
+function aplicarStatusRegistros() {
+  document.getElementById('blocoRegistro').style.display = registrosAbertos ? '' : 'none';
+  document.getElementById('avisoEncerrado').style.display = registrosAbertos ? 'none' : 'block';
+  atualizarBotaoRegistrar();
+  renderStatusRegistrosAdmin();
+}
+
+function renderStatusRegistrosAdmin() {
+  const dot = document.getElementById('regDot');
+  const btn = document.getElementById('btnToggleRegistros');
+  if (registrosAbertos) {
+    dot.className = 'loc-dot ok';
+    document.getElementById('regTitulo').textContent = 'Registros liberados';
+    document.getElementById('regSub').textContent = 'Os alunos podem enviar o nome normalmente.';
+    btn.className = 'btn btn-lock';
+    btn.textContent = '🔒 Bloquear novos registros';
+  } else {
+    dot.className = 'loc-dot fail';
+    document.getElementById('regTitulo').textContent = 'Registros bloqueados';
+    document.getElementById('regSub').textContent = 'Nenhum aluno consegue enviar o nome até você liberar.';
+    btn.className = 'btn btn-unlock';
+    btn.textContent = '🔓 Liberar registros';
+  }
+}
+
+async function alternarRegistros() {
+  if (!adminLogado) return;
+  const novoEstado = !registrosAbertos;
+  if (!novoEstado && !confirm('Bloquear novos registros? Os alunos não poderão mais enviar o nome até você liberar de novo.')) return;
+
+  const btn = document.getElementById('btnToggleRegistros');
+  btn.disabled = true;
+  try {
+    await db.ref('settings/registrationOpen').set(novoEstado);
+    // a tela se atualiza sozinha pelo listener em escutarStatusRegistros()
+  } catch (e) {
+    console.error(e);
+    alert('Não foi possível alterar o status. Verifique sua conexão e as regras do Firebase para "settings".');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ===============================================================
 // INIT
 // ===============================================================
@@ -757,8 +886,10 @@ function init() {
   }
 
   document.getElementById('inputNome').addEventListener('input', atualizarBotaoRegistrar);
-  document.getElementById('inputRA').addEventListener('input', atualizarBotaoRegistrar);
+  document.getElementById('inputCurso').addEventListener('change', atualizarBotaoRegistrar);
   document.getElementById('inputSemestre').addEventListener('change', atualizarBotaoRegistrar);
+
+  escutarStatusRegistros();
 
   // Se a sessão do admin expirar/for encerrada, volta para o formulário
   auth.onAuthStateChanged(user => {
@@ -859,10 +990,10 @@ function calcDistancia(lat1, lon1, lat2, lon2) {
 // ===============================================================
 function atualizarBotaoRegistrar() {
   const nome     = document.getElementById('inputNome').value.trim();
-  const ra       = document.getElementById('inputRA').value.trim();
+  const curso    = document.getElementById('inputCurso').value;
   const semestre = document.getElementById('inputSemestre').value;
   const locOk = locStatus === 'ok';
-  document.getElementById('btnRegistrar').disabled = !(nome && ra && semestre && locOk);
+  document.getElementById('btnRegistrar').disabled = !(nome && curso && semestre && locOk && registrosAbertos);
 }
 
 // ===============================================================
@@ -870,7 +1001,7 @@ function atualizarBotaoRegistrar() {
 // ===============================================================
 async function registrarPresenca() {
   const nome     = document.getElementById('inputNome').value.trim();
-  const ra       = document.getElementById('inputRA').value.trim();
+  const ra       = document.getElementById('inputCurso').value; // o campo "ra" guarda o CURSO (GTI/GCOM)
   const semestre = document.getElementById('inputSemestre').value;
   const erro = document.getElementById('erroForm');
   const btn  = document.getElementById('btnRegistrar');
@@ -891,6 +1022,15 @@ async function registrarPresenca() {
   btn.textContent = 'Confirmando...';
 
   try {
+    // 0) O admin bloqueou os registros? (checa de novo na hora do envio,
+    //    caso a tela do aluno tenha ficado aberta antes do bloqueio)
+    const statusSnap = await db.ref('settings/registrationOpen').once('value').catch(() => null);
+    if (statusSnap && statusSnap.val() === false) {
+      registrosAbertos = false;
+      aplicarStatusRegistros();
+      return;
+    }
+
     const eventoId = getEventoId();
     const deviceId = getDeviceId();
 
@@ -910,7 +1050,7 @@ async function registrarPresenca() {
     if (!CONFIG.permitirDuplicata) {
       const raSnap = await db.ref('raIndex/' + eventoId + '/' + raKey(ra)).get();
       if (raSnap.exists()) {
-        erro.textContent = `RA ${ra} já registrado às ${raSnap.val()}.`;
+        erro.textContent = `Curso ${ra} já registrado às ${raSnap.val()}.`;
         erro.style.display = 'block';
         return;
       }
@@ -1050,7 +1190,7 @@ function renderAdmin() {
       <div class="attendee-avatar">${iniciais}</div>
       <div class="attendee-info">
         <div class="attendee-name">${escHtml(p.nome)}</div>
-        <div class="attendee-meta">RA ${escHtml(p.ra)} · ${p.semestre ? escHtml(p.semestre) + 'º sem. · ' : ''}${escHtml(p.evento)}</div>
+        <div class="attendee-meta">${escHtml(p.ra)} · ${p.semestre ? escHtml(p.semestre) + 'º sem. · ' : ''}${escHtml(p.evento)}</div>
       </div>
       <div class="attendee-time">${escHtml(p.hora)}</div>
       <button class="delete-btn" onclick="excluirPresenca(${idx})" title="Remover">✕</button>
@@ -1082,7 +1222,7 @@ function limparLista() {
 function exportarCSV() {
   const presencas = getPresencas();
   if (presencas.length === 0) { alert('Nenhuma presença para exportar.'); return; }
-  const header = 'Nome,RA,Semestre,Evento,Data,Hora\n';
+  const header = 'Nome,Curso,Semestre,Evento,Data,Hora\n';
   const rows = presencas.map(p => `"${p.nome}","${p.ra}","${p.semestre || ''}","${p.evento}","${p.data}","${p.hora}"`).join('\n');
   const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
