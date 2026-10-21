@@ -509,7 +509,7 @@ const CONFIG = {
   lng: -50.437061552840206,
 
   /* Raio tolerado em metros (ex: 200 = 200 metros ao redor da faculdade) */
-  raioMetros: 350,
+  raioMetros: 200,
 
   /* Exigir verificação de localização para registrar? */
   /* true = sim (mais seguro) | false = não (sem restrição) */
@@ -1192,7 +1192,6 @@ function renderAdmin() {
         <div class="attendee-name">${escHtml(p.nome)}</div>
         <div class="attendee-meta">${escHtml(p.ra)} · ${p.semestre ? escHtml(p.semestre) + 'º sem. · ' : ''}${escHtml(p.evento)}</div>
       </div>
-      <div class="attendee-time">${escHtml(p.hora)}</div>
       <button class="delete-btn" onclick="excluirPresenca(${idx})" title="Remover">✕</button>
     </div>`;
   }).join('');
@@ -1222,8 +1221,15 @@ function limparLista() {
 function exportarCSV() {
   const presencas = getPresencas();
   if (presencas.length === 0) { alert('Nenhuma presença para exportar.'); return; }
-  const header = 'Nome,Curso,Semestre,Evento,Data,Hora\n';
-  const rows = presencas.map(p => `"${p.nome}","${p.ra}","${p.semestre || ''}","${p.evento}","${p.data}","${p.hora}"`).join('\n');
+  // Separador ";" porque o Excel em português (Brasil) usa ponto e vírgula para separar colunas
+  const SEP = ';';
+  const celula = v => {
+    let t = String(v ?? '');
+    if (/^[=+\-@]/.test(t)) t = "'" + t;            // evita que o Excel interprete o texto como fórmula
+    return '"' + t.replace(/"/g, '""') + '"';          // aspas dentro do texto são duplicadas
+  };
+  const header = ['Nome','Curso','Semestre','Evento','Data'].join(SEP) + '\r\n';
+  const rows = presencas.map(p => [p.nome, p.ra, p.semestre, p.evento, p.data].map(celula).join(SEP)).join('\r\n');
   const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
